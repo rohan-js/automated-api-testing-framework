@@ -1,0 +1,105 @@
+base_url: "http://127.0.0.1:5000"
+timeout_seconds: 3
+response_sla_ms: 200
+
+invariants:
+  - balance_non_negative
+  - money_conserved
+  - idempotent
+
+retry_count: 3
+retry_endpoint: transfer
+retry_idempotency_key: "retry-transfer-ci"
+retry_body:
+  from: A
+  to: B
+  amount: 100
+
+fuzz_enabled: true
+fuzz_endpoint: transfer
+
+endpoints:
+  reset:
+    method: POST
+    path: /reset
+    body:
+      accounts:
+        A: 1000
+        B: 1000
+      bug_flags:
+        allow_negative_balance: false
+        duplicate_on_retry: false
+
+  deposit:
+    method: POST
+    path: /deposit
+    body:
+      account: A
+      amount: 500
+    valid_cases:
+      - account: A
+        amount: 25
+      - account: B
+        amount: 5
+
+  transfer:
+    method: POST
+    path: /transfer
+    body:
+      from: A
+      to: B
+      amount: 100
+    valid_cases:
+      - from: A
+        to: B
+        amount: 100
+      - from: B
+        to: A
+        amount: 25
+
+  balance:
+    method: GET
+    path: /balance
+
+stateful_sequence:
+  - endpoint: reset
+    body:
+      accounts:
+        A: 500
+        B: 50
+      bug_flags:
+        allow_negative_balance: false
+        duplicate_on_retry: false
+
+  - endpoint: deposit
+    body:
+      account: A
+      amount: 500
+
+  - endpoint: transfer
+    body:
+      from: A
+      to: B
+      amount: 100
+
+  - endpoint: transfer
+    body:
+      from: A
+      to: B
+      amount: 100
+    headers:
+      Idempotency-Key: "stateful-retry-clean"
+
+  - endpoint: transfer
+    body:
+      from: A
+      to: B
+      amount: 100
+    headers:
+      Idempotency-Key: "stateful-retry-clean"
+
+  - endpoint: transfer
+    body:
+      from: B
+      to: A
+      amount: 50
